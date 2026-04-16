@@ -6,55 +6,56 @@ import ee
 import streamlit as st
 
 
-# Remplacez par l'ID de votre projet Google Cloud
-PROJECT_ID = "mon-projet-spatial"
-
-
 def load_engine():
     """Charge et initialise Google Earth Engine"""
+    
+    # Tentative 1: Compte de service (Streamlit Cloud)
     try:
-        # Initialisation AVEC le projet specifie
-        ee.Initialize(project=PROJECT_ID)
-        st.success("✅ Google Earth Engine initialise avec succes !")
+        if hasattr(st, "secrets") and st.secrets and "earth_engine" in st.secrets:
+            secrets = st.secrets["earth_engine"]
+            
+            client_email = secrets.get("client_email")
+            private_key = secrets.get("private_key")
+            
+            if client_email and private_key:
+                # Nettoyer la clé privée
+                private_key = private_key.replace('\\n', '\n')
+                
+                credentials = ee.ServiceAccountCredentials(client_email, key_data=private_key)
+                ee.Initialize(credentials)
+                st.success("✅ Earth Engine connecté (compte de service)")
+                return True
+    except Exception as e:
+        # Ignorer l'erreur "No secrets found" en local
+        if "No secrets found" not in str(e):
+            st.warning(f"⚠️ Erreur compte de service: {str(e)[:100]}")
+    
+    # Tentative 2: Authentification standard (local)
+    try:
+        ee.Initialize()
+        st.success("✅ Earth Engine connecté (mode local)")
         return True
     except Exception as e:
-        # Essai sans projet (au cas ou deja configure)
+        # Tentative 3: Avec projet spécifié
         try:
-            ee.Initialize()
+            ee.Initialize(project="mon-projet-spatial")
+            st.success("✅ Earth Engine connecté (projet spécifié)")
             return True
-        except:
-            pass
-        
-        # Essai avec service account (Streamlit Cloud)
-        try:
-            if hasattr(st, 'secrets') and st.secrets and "earth_engine" in st.secrets:
-                secrets = st.secrets["earth_engine"]
-                if "client_email" in secrets and "private_key" in secrets:
-                    credentials = ee.ServiceAccountCredentials(
-                        secrets["client_email"], 
-                        key_data=secrets["private_key"].replace('\\n', '\n')
-                    )
-                    ee.Initialize(credentials, project=PROJECT_ID)
-                    st.success("✅ Google Earth Engine initialise avec succes !")
-                    return True
-        except:
-            pass
-        
-        # Message d'erreur avec instructions
-        st.error(f"""
-❌ Erreur Earth Engine: {str(e)[:150]}
-
-Solution 1 - Configurer le projet dans le terminal:
-    earthengine set_project {PROJECT_ID}
-    earthengine authenticate --force
-
-Solution 2 - Si vous n'avez pas de compte:
-    Inscrivez-vous sur: https://signup.earthengine.google.com/
-
-Solution 3 - Verifiez votre projet:
-    https://console.cloud.google.com/apis/library/earthengine.googleapis.com
-        """)
-        return None
+        except Exception as e2:
+            st.error(f"""
+            ❌ Erreur Earth Engine: {str(e2)[:200]}
+            
+            **Solution pour le développement local :**
+            1. Ouvrez un terminal
+            2. Exécutez : `earthengine authenticate --force`
+            3. Redémarrez l'application
+            
+            **Pour Streamlit Cloud :**
+            Les secrets sont déjà configurés. Vérifiez que :
+            1. Le compte de service est ajouté dans Earth Engine
+            2. L'API Earth Engine est activée
+            """)
+            return False
 
 
 def get_geotiff_url(image, geometry, filename, scale=30):
@@ -126,8 +127,6 @@ def calculate_indicator(image, sensor_config, indicator_key):
             if sensor_name == "Landsat":
                 thermal_band = bands.get('thermal', 'ST_B10')
                 if thermal_band in band_names:
-                    # Conversion de la bande thermale en LST (°C)
-                    # Formule standard pour Landsat 8/9
                     lst = image.select(thermal_band) \
                         .multiply(0.00341802) \
                         .add(149.0) \
@@ -138,13 +137,11 @@ def calculate_indicator(image, sensor_config, indicator_key):
         
         # ==================== VCI ====================
         elif indicator_key == "VCI":
-            # VCI nécessite une approche spécifique (période historique)
-            # Cette fonction ne gère que le NDVI de base pour VCI
             if sensor_name == 'MODIS':
                 return image
             return None
         
-        # ==================== TEMPERATURE (ancien, gardé pour compatibilité) ====================
+        # ==================== TEMPERATURE ====================
         elif indicator_key == "Temperature":
             if sensor_name == "Landsat":
                 thermal_band = bands.get('thermal', 'ST_B10')

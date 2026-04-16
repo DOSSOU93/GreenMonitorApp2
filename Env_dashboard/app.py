@@ -1176,7 +1176,7 @@ if st.session_state.analysis_done and st.session_state.show_results:
         display_rf_legend()
 
 # --------------------------
-# AFFICHAGE DES RÉSULTATS STANDARDS
+# AFFICHAGE DES RÉSULTATS STANDARDS (AVEC EXPORT CSV, PDF, GEOTIFF)
 # --------------------------
 if st.session_state.analysis_done and st.session_state.show_results:
     if st.session_state.analysis_results.get('indicator') in ["NDVI", "NDWI", "LST", "VCI"]:
@@ -1246,6 +1246,53 @@ if st.session_state.analysis_done and st.session_state.show_results:
                 plt.close(st.session_state.fig_seasonal)
             else:
                 st.info("📊 Aucune donnée de variation saisonnière disponible")
+        
+        st.markdown("---")
+        
+        # ========== BOUTONS D'EXPORT ==========
+        col_csv, col_pdf, col_tif = st.columns(3)
+        
+        with col_csv:
+            csv_data = export_csv_data(res, st.session_state.timeseries_data, st.session_state.seasonal_data)
+            st.download_button(
+                "📊 CSV",
+                data=csv_data,
+                file_name=f"{res['indicator']}_{res['date']}.csv",
+                use_container_width=True
+            )
+        
+        with col_pdf:
+            pdf_path = export_pdf(
+                results=res,
+                timeseries_df=st.session_state.timeseries_data,
+                seasonal_df=st.session_state.seasonal_data,
+                ts_start=ts_start if show_timeseries else None,
+                ts_end=ts_end if show_timeseries else None,
+                seasonal_year=year if show_seasonal else None,
+                fig_ts=st.session_state.fig_timeseries,
+                fig_seas=st.session_state.fig_seasonal,
+                COLOR_PALETTES=COLOR_PALETTES,
+                geotiff_url=st.session_state.geotiff_url,
+                geotiff_filename=st.session_state.result_image_name,
+                indicator_name=selected_indicator
+            )
+            if pdf_path and os.path.exists(pdf_path):
+                with open(pdf_path, "rb") as f:
+                    st.download_button(
+                        "📄 PDF",
+                        data=f,
+                        file_name=f"rapport_{res['indicator']}_{res['date']}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True
+                    )
+            else:
+                st.download_button("📄 PDF", data="", disabled=True, use_container_width=True)
+        
+        with col_tif:
+            if st.session_state.geotiff_url:
+                st.markdown(f'<a href="{st.session_state.geotiff_url}" download="{st.session_state.result_image_name}"><button style="width:100%; padding:8px; background:#4CAF50; color:white; border:none; border-radius:5px;">🗺️ GeoTIFF</button></a>', unsafe_allow_html=True)
+            else:
+                st.button("🗺️ GeoTIFF", disabled=True, use_container_width=True)
         
         st.markdown("---")
         
